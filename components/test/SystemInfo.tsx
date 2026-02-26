@@ -1,0 +1,46 @@
+import React from 'react';
+
+declare global {
+  interface Window {
+    electron?: {
+      platform: string;
+      versions: {
+        node: string;
+        chrome: string;
+        electron: string;
+      };
+    };
+  }
+}
+
+export const SystemInfo = () => {
+  const electron = window.electron;
+
+  if (!electron) {
+    return null;
+  }
+
+  return (
+    <div
+      className="p-4 rounded-lg font-mono text-sm mb-4"
+      style={{
+        backgroundColor: 'var(--bg-surface)',
+        color: 'var(--text-primary)',
+      }}
+    >
+      <h2 className="mt-0 text-lg">System Info:</h2>
+      <p>
+        <strong>Platform:</strong> {electron.platform}
+      </p>
+      <p>
+        <strong>Node:</strong> {electron.versions.node}
+      </p>
+      <p>
+        <strong>Chrome:</strong> {electron.versions.chrome}
+      </p>
+      <p>
+        <strong>Electron:</strong> {electron.versions.electron}
+      </p>
+    </div>
+  );
+};
