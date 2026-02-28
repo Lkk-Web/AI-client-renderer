@@ -282,10 +282,9 @@ export const WorkspacePanel = ({
     return fetchFileList(selectedWorkspaceId);
   }, [selectedWorkspaceId, fetchFileList]);
 
-  const fetchCommands = useCallback(async () => {
-    if (!selectedWorkspaceId) return [];
-    return fetchSlashCommandList(selectedWorkspaceId);
-  }, [selectedWorkspaceId, fetchSlashCommandList]);
+  const fetchCommands = useCallback(async () => [
+    { name: 'claw', description: '命令/指令 · OPEN_CLAW' },
+  ], []);
 
   // Ref for ChatInput to focus on session change
   const chatInputRef = useRef<ChatInputHandle>(null);

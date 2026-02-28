@@ -482,22 +482,39 @@ const useStore = create<Store>()((set, get) => ({
         } as any);
       }
 
+      // Parse slash command to select app config
+      const APP_CONFIGS: Record<string, { app: string; agentName: string }> = {
+        claw: { app: 'OPEN_CLAW', agentName: 'open-claw-agent' },
+      };
+      const DEFAULT_CONFIG = { app: 'KNOWLEDGE_ASSISTANT', agentName: 'knowledge-agent' };
+
+      let messageContent = params.message || '';
+      let appConfig = DEFAULT_CONFIG;
+      const slashMatch = messageContent.match(/^\/(\w+)\s*([\s\S]*)$/);
+      if (slashMatch) {
+        const cmd = slashMatch[1].toLowerCase();
+        if (APP_CONFIGS[cmd]) {
+          appConfig = APP_CONFIGS[cmd];
+          messageContent = slashMatch[2];
+        }
+      }
+
       // Call HTTP API
       const response = await fetch('/api/copilot/hook', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          app: 'KNOWLEDGE_ASSISTANT',
-          agentName: 'knowledge-agent',
+          app: appConfig.app,
+          agentName: appConfig.agentName,
           data: {
-            agentName: 'knowledge-agent',
-            nlu: { agentName: 'knowledge-agent', intent: '' },
+            agentName: appConfig.agentName,
+            nlu: { agentName: appConfig.agentName, intent: '' },
             dialogueId: '',
             fromUser: '5fbb4c7db22cee000102c3b9',
             id: randomUUID(),
             createdAt: Date.now(),
             type: 'text',
-            content: params.message || '',
+            content: messageContent,
           },
           replyMode: 'stream',
           sessionId,

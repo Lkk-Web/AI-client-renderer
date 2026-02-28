@@ -330,6 +330,11 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     const { value } = inputState.state;
     const canSend = value.trim().length > 0;
 
+    const activeCommand = useMemo(() => {
+      const m = value.match(/^\/(\w+)\s/);
+      return m ? m[1] : null;
+    }, [value]);
+
     const displayValue = useMemo(() => {
       if (mode === 'bash' || mode === 'memory') {
         return value.slice(1);
@@ -382,6 +387,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     };
 
     const borderColor = useMemo(() => {
+      if (activeCommand) return '#10b981';
       // Memory and bash input modes take precedence
       if (mode === 'memory') return 'var(--brand-purple, #8b5cf6)';
       if (mode === 'bash') return 'var(--brand-orange, #f97316)';
@@ -392,6 +398,8 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     }, [mode, planMode]);
 
     const modeInfo = useMemo(() => {
+      if (activeCommand)
+        return { icon: ComputerTerminal01Icon, label: `/${activeCommand}`, color: '#10b981' };
       if (mode === 'memory')
         return { icon: NoteIcon, label: 'Memory', color: '#8b5cf6' };
       if (mode === 'bash')
