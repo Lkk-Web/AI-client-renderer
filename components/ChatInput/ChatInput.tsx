@@ -16,12 +16,14 @@ import {
   BrainIcon,
   ComputerTerminal01Icon,
   NoteIcon,
+  FileIcon,
 } from '@hugeicons/core-free-icons';
 import { useInputHandlers } from '../../hooks/useInputHandlers';
 import { SuggestionDropdown } from './SuggestionDropdown';
 import { ImagePreview } from './ImagePreview';
 import { Textarea, Tooltip, TooltipTrigger, TooltipPopup, Button } from '../ui';
 import type { SlashCommand } from '../../hooks/useSlashCommands';
+import type { PathSuggestion } from '../../hooks/useFileSuggestion';
 import type {
   HandlerMethod,
   HandlerInput,
@@ -50,7 +52,7 @@ interface ChatInputProps {
   onSubmit: (value: string, images?: string[]) => void;
   onCancel?: () => void;
   onShowForkModal?: () => void;
-  fetchPaths?: () => Promise<string[]>;
+  fetchPaths?: () => Promise<PathSuggestion[]>;
   fetchCommands?: () => Promise<SlashCommand[]>;
   placeholder?: string;
   disabled?: boolean;
@@ -96,6 +98,24 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
   ) {
     // Ref for textarea
     const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+    const handleFilePickerClick = async (type: 'file' | 'folder' = 'file') => {
+      try {
+        const url = type === 'folder'
+          ? '/api/system/file-picker?type=folder'
+          : '/api/system/file-picker';
+        const res = await fetch(url);
+        const { data:{ path } } = await res.json();
+        if (!path) return;
+
+        const { value, cursorPosition } = inputState.state;
+        const mention = `@${path} `;
+        inputState.setValue(value.slice(0, cursorPosition) + mention + value.slice(cursorPosition));
+        inputState.setCursorPosition(cursorPosition + mention.length);
+      } catch (error) {
+        console.error('File picker error:', error);
+      }
+    };
 
     // Expose focus method to parent via ref
     useImperativeHandle(
@@ -336,7 +356,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     }, [value]);
 
     const displayValue = useMemo(() => {
-      if (mode === 'bash' || mode === 'memory') {
+      if (mode === 'bash' || mode === 'memory' || mode === 'logger') {
         return value.slice(1);
       }
       return value;
@@ -344,8 +364,8 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
 
     const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
       let newValue = e.target.value;
-      if (mode === 'bash' || mode === 'memory') {
-        const prefix = mode === 'bash' ? '!' : '#';
+      if (mode === 'bash' || mode === 'memory' || mode === 'logger') {
+        const prefix = mode === 'bash' ? '!' : mode === 'memory' ? '#' : '@';
         newValue = prefix + newValue;
       }
       handlers.onChange({
@@ -381,13 +401,14 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
           metaKey: false,
           shiftKey: false,
           altKey: false,
+          nativeEvent: { isComposing: false },
         } as React.KeyboardEvent<HTMLTextAreaElement>;
         handlers.onKeyDown(submitEvent);
       }
     };
 
     const borderColor = useMemo(() => {
-      if (activeCommand) return '#10b981';
+      if (activeCommand || mode === 'logger') return '#10b981';
       // Memory and bash input modes take precedence
       if (mode === 'memory') return 'var(--brand-purple, #8b5cf6)';
       if (mode === 'bash') return 'var(--brand-orange, #f97316)';
@@ -400,6 +421,8 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     const modeInfo = useMemo(() => {
       if (activeCommand)
         return { icon: ComputerTerminal01Icon, label: `/${activeCommand}`, color: '#10b981' };
+      if (mode === 'logger')
+        return { icon: FileIcon, label: '记录笔记', color: '#10b981' };
       if (mode === 'memory')
         return { icon: NoteIcon, label: 'Memory', color: '#8b5cf6' };
       if (mode === 'bash')
@@ -498,6 +521,22 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
           >
             {/* Left side tools */}
             <div className="flex items-center gap-1">
+              {/* File picker button */}
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <button
+                      type="button"
+                      onClick={() => handleFilePickerClick('file')}
+                      className="flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors hover:bg-black/5 dark:hover:bg-white/5"
+                      style={{ color: 'var(--text-secondary)' }}
+                    >
+                      <HugeiconsIcon icon={FileIcon} size={14} />
+                    </button>
+                  }
+                />
+                <TooltipPopup>选择文件 (@路径)</TooltipPopup>
+              </Tooltip>
               {/* Provider and Model selectors */}
               {effectiveModelName && request && cwd && sessionId && (
                 <div className="flex items-center gap-0.5">

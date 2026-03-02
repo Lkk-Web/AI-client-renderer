@@ -21,7 +21,7 @@ type SessionId = string;
 type RepoId = string;
 
 // Input mode types
-export type InputMode = 'prompt' | 'bash' | 'memory';
+export type InputMode = 'prompt' | 'bash' | 'memory' | 'logger';
 export type PlanMode = 'normal' | 'plan' | 'brainstorm';
 export type ThinkingLevel = null | 'low' | 'medium' | 'high';
 
@@ -37,6 +37,7 @@ export interface SessionInputState {
   thinkingInitialized: boolean;
   pastedTextMap: Record<string, string>;
   pastedImageMap: Record<string, string>;
+  loggerModeActive: boolean; // Track if logger mode was explicitly activated
 }
 
 const defaultSessionInputState: SessionInputState = {
@@ -50,11 +51,17 @@ const defaultSessionInputState: SessionInputState = {
   thinkingInitialized: false,
   pastedTextMap: {},
   pastedImageMap: {},
+  loggerModeActive: false,
 };
 
-export function getInputMode(value: string): InputMode {
+export function getInputMode(value: string, loggerModeActive?: boolean): InputMode {
   if (value.startsWith('!')) return 'bash';
   if (value.startsWith('#')) return 'memory';
+  // Enter logger mode if explicitly activated OR if @ followed by content
+  if (value.startsWith('@')) {
+    if (loggerModeActive) return 'logger';
+    if (value.length > 1 && value[1] !== ' ') return 'logger';
+  }
   return 'prompt';
 }
 
@@ -69,6 +76,7 @@ interface SessionProcessingState {
     maxRetries: number;
     error: string | null;
   } | null;
+  abortController: AbortController | null;
 }
 
 const defaultSessionProcessingState: SessionProcessingState = {
@@ -77,6 +85,7 @@ const defaultSessionProcessingState: SessionProcessingState = {
   processingToken: 0,
   error: null,
   retryInfo: null,
+  abortController: null,
 };
 
 interface StoreState {
@@ -462,6 +471,9 @@ const useStore = create<Store>()((set, get) => ({
 
     const cwd = workspace.worktreePath;
 
+    // Create AbortController for this request
+    const abortController = new AbortController();
+
     // Set session-scoped processing state
     setSessionProcessing(sessionId, {
       status: 'processing',
@@ -469,6 +481,7 @@ const useStore = create<Store>()((set, get) => ({
       processingToken: 0,
       error: null,
       retryInfo: null,
+      abortController,
     });
 
     try {
@@ -485,6 +498,7 @@ const useStore = create<Store>()((set, get) => ({
       // Parse slash command to select app config
       const APP_CONFIGS: Record<string, { app: string; agentName: string }> = {
         claw: { app: 'OPEN_CLAW', agentName: 'open-claw-agent' },
+        logger: { app: 'KNOWLEDGE_LOGGER', agentName: 'knowledge-logger-agent' },
       };
       const DEFAULT_CONFIG = { app: 'KNOWLEDGE_ASSISTANT', agentName: 'knowledge-agent' };
 
@@ -497,12 +511,26 @@ const useStore = create<Store>()((set, get) => ({
           appConfig = APP_CONFIGS[cmd];
           messageContent = slashMatch[2];
         }
+      } else if (messageContent.startsWith('@')) {
+        // @ prefix = logger mode shortcut
+        appConfig = APP_CONFIGS['logger'];
+      }
+
+      // Extract @filepath for logger metadata
+      let metadata: Record<string, string> | undefined;
+      if (appConfig.app === 'KNOWLEDGE_LOGGER') {
+        const fileMatch = messageContent.match(/@(\S+)/);
+        if (fileMatch) {
+          metadata = { filePath: fileMatch[1] };
+          messageContent = messageContent.replace(/@\S+\s*/, '').trim();
+        }
       }
 
       // Call HTTP API
       const response = await fetch('/api/copilot/hook', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: abortController.signal,
         body: JSON.stringify({
           app: appConfig.app,
           agentName: appConfig.agentName,
@@ -515,6 +543,7 @@ const useStore = create<Store>()((set, get) => ({
             createdAt: Date.now(),
             type: 'text',
             content: messageContent,
+            ...(metadata && { metadata }),
           },
           replyMode: 'stream',
           sessionId,
@@ -1074,6 +1103,11 @@ const useStore = create<Store>()((set, get) => ({
     // Only cancel if currently processing
     if (processing.status !== 'processing') {
       return;
+    }
+
+    // Abort the HTTP request if AbortController exists
+    if (processing.abortController) {
+      processing.abortController.abort();
     }
 
     // Get cwd from selected workspace

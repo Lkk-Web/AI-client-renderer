@@ -4,6 +4,11 @@ import { findAtTokenAtCursor } from '../lib/tokenUtils';
 
 type TriggerType = 'at' | 'tab' | null;
 
+export interface PathSuggestion {
+  name: string;
+  description: string;
+}
+
 interface MatchResult {
   hasQuery: boolean;
   fullMatch: string;
@@ -16,7 +21,8 @@ interface UseFileSuggestionProps {
   value: string;
   cursorPosition: number;
   forceTabTrigger: boolean;
-  fetchPaths: () => Promise<string[]>;
+  fetchPaths: () => Promise<PathSuggestion[]>;
+  disabled?: boolean; // Disable suggestions when in logger mode
 }
 
 export function useFileSuggestion({
@@ -24,8 +30,9 @@ export function useFileSuggestion({
   cursorPosition,
   forceTabTrigger,
   fetchPaths,
+  disabled = false,
 }: UseFileSuggestionProps) {
-  const [paths, setPaths] = useState<string[]>([]);
+  const [paths, setPaths] = useState<PathSuggestion[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
   const atMatch = useMemo((): MatchResult => {
@@ -55,13 +62,6 @@ export function useFileSuggestion({
       query = query.slice(1).replace(/"$/, '');
     }
 
-    console.log('[useFileSuggestion] atMatch result:', {
-      hasQuery: true,
-      fullMatch,
-      query,
-      startIndex,
-      triggerType: 'at',
-    });
     return {
       hasQuery: true,
       fullMatch,
@@ -108,29 +108,36 @@ export function useFileSuggestion({
   const activeMatch = atMatch.hasQuery ? atMatch : tabMatch;
 
   const matchedPaths = useMemo(() => {
+    if (disabled) return [];
     if (!activeMatch.hasQuery) return [];
     if (activeMatch.query === '') return paths;
     return paths.filter((p) =>
-      p.toLowerCase().includes(activeMatch.query.toLowerCase()),
+      p.name.toLowerCase().includes(activeMatch.query.toLowerCase()) ||
+      p.description.toLowerCase().includes(activeMatch.query.toLowerCase()),
     );
-  }, [paths, activeMatch]);
+  }, [paths, activeMatch, disabled]);
 
   const navigation = useListNavigation(matchedPaths);
 
   useEffect(() => {
+    if (disabled) return;
     if (activeMatch.hasQuery && paths.length === 0) {
       setIsLoading(true);
       fetchPaths()
         .then(setPaths)
         .finally(() => setIsLoading(false));
     }
-  }, [activeMatch.hasQuery, paths.length, fetchPaths]);
+  }, [activeMatch.hasQuery, paths.length, fetchPaths, disabled]);
 
   const getSelected = useCallback(() => {
     const selected = navigation.getSelected();
-    if (!selected) return '';
-    return selected.includes(' ') ? `"${selected}"` : selected;
+    if (!selected) return null;
+    return selected;
   }, [navigation]);
+
+  const clearPaths = useCallback(() => {
+    setPaths([]);
+  }, []);
 
   return {
     matchedPaths,
@@ -143,5 +150,6 @@ export function useFileSuggestion({
     navigatePrevious: navigation.navigatePrevious,
     reset: navigation.reset,
     getSelected,
+    clearPaths,
   };
 }

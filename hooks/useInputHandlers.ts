@@ -1,6 +1,6 @@
 import { useCallback, useState, useRef } from 'react';
 import { useInputState } from './useInputState';
-import { useFileSuggestion } from './useFileSuggestion';
+import { useFileSuggestion, type PathSuggestion } from './useFileSuggestion';
 import { useSlashCommands, type SlashCommand } from './useSlashCommands';
 import { usePasteManager } from './usePasteManager';
 import { useImagePasteManager } from './useImagePasteManager';
@@ -15,7 +15,7 @@ interface UseInputHandlersProps {
   onSubmit: (value: string, images?: string[]) => void;
   onCancel: () => void;
   onShowForkModal: () => void;
-  fetchPaths: () => Promise<string[]>;
+  fetchPaths: () => Promise<PathSuggestion[]>;
   fetchCommands: () => Promise<SlashCommand[]>;
   isProcessing?: boolean;
 }
@@ -39,6 +39,7 @@ export function useInputHandlers({
     draftInput,
     planMode,
     thinkingEnabled,
+    loggerModeActive,
     setHistoryIndex,
     setDraftInput,
     addToHistory,
@@ -60,6 +61,7 @@ export function useInputHandlers({
     cursorPosition,
     forceTabTrigger,
     fetchPaths,
+    disabled: loggerModeActive,
   });
 
   const slashCommands = useSlashCommands({ value, fetchCommands });
@@ -73,8 +75,9 @@ export function useInputHandlers({
   const handleDoubleEscape = useDoublePress(
     onShowForkModal,
     () => {
-      if ((mode === 'bash' || mode === 'memory') && value.length === 1) {
+      if ((mode === 'bash' || mode === 'memory' || mode === 'logger') && value.length === 1) {
         inputState.setValue('');
+        inputState.setLoggerModeActive(false);
       } else {
         onCancel();
       }
@@ -84,17 +87,31 @@ export function useInputHandlers({
 
   const applyFileSuggestion = useCallback(() => {
     const selected = fileSuggestion.getSelected();
+
     if (!selected) return;
+
+
+    // Special handling for "记录笔记" - enter logger mode
+    if (selected.name === '记录笔记') {
+      inputState.setValue('@');
+      inputState.setCursorPosition(1);
+      inputState.setLoggerModeActive(true);
+      setForceTabTrigger(false);
+      fileSuggestion.reset();
+      fileSuggestion.clearPaths();
+      return;
+    }
 
     const prefix = fileSuggestion.triggerType === 'at' ? '@' : '';
     const before = value.substring(0, fileSuggestion.startIndex);
     const after = value
       .substring(fileSuggestion.startIndex + fileSuggestion.fullMatch.length)
       .trim();
-    const newValue = `${before}${prefix}${selected} ${after}`.trim();
+    const selectedPath = selected.name.includes(' ') ? `"${selected.name}"` : selected.name;
+    const newValue = `${before}${prefix}${selectedPath} ${after}`.trim();
 
     inputState.setValue(newValue);
-    inputState.setCursorPosition(`${before}${prefix}${selected} `.length);
+    inputState.setCursorPosition(`${before}${prefix}${selectedPath} `.length);
     setForceTabTrigger(false);
   }, [fileSuggestion, inputState, value]);
 
@@ -238,6 +255,10 @@ export function useInputHandlers({
 
       // Enter handling
       if (e.key === 'Enter') {
+        // Don't submit if IME composition is in progress
+        if ((e.nativeEvent as any).isComposing) {
+          return;
+        }
         if (e.metaKey || e.shiftKey || e.altKey) {
           return; // Allow newline
         }
@@ -359,7 +380,7 @@ export function useInputHandlers({
             if (cursorPosition > 0) {
               inputState.setValue(
                 value.slice(0, cursorPosition - 1) +
-                  value.slice(cursorPosition),
+                value.slice(cursorPosition),
               );
               inputState.setCursorPosition(cursorPosition - 1);
             }
@@ -410,7 +431,7 @@ export function useInputHandlers({
             if (match) {
               inputState.setValue(
                 value.slice(0, cursorPosition) +
-                  afterCursor.slice(match[0].length),
+                afterCursor.slice(match[0].length),
               );
             }
             break;

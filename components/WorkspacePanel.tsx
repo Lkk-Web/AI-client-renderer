@@ -25,7 +25,7 @@ import {
   EmptyTitle,
   EmptyDescription,
 } from '@/components/ui/empty';
-import { useStore } from '../store';
+import { useStore, getInputMode } from '../store';
 import { ChatInput, type ChatInputHandle } from './ChatInput';
 import { Message } from './messages/Message';
 import { splitMessages } from './messages/messageHelpers';
@@ -82,7 +82,6 @@ export const WorkspacePanel = ({
   const workspaces = useStore((state) => state.workspaces);
   const sessionsMap = useStore((state) => state.sessions);
   const messagesMap = useStore((state) => state.messages);
-  const fetchFileList = useStore((state) => state.fetchFileList);
   const fetchSlashCommandList = useStore(
     (state) => state.fetchSlashCommandList,
   );
@@ -90,6 +89,14 @@ export const WorkspacePanel = ({
   const getSessionInput = useStore((state) => state.getSessionInput);
   const setSessionInput = useStore((state) => state.setSessionInput);
   const storeSendMessage = useStore((state) => state.sendMessage);
+
+  // Get current input mode for dynamic placeholder
+  const currentInputState = selectedSessionId
+    ? getSessionInput(selectedSessionId)
+    : null;
+  const inputMode = currentInputState
+    ? getInputMode(currentInputState.value, currentInputState.loggerModeActive)
+    : 'prompt';
 
   // Get sessions and messages for the current workspace from store - memoized to avoid infinite loop
   const allSessions = useMemo(
@@ -125,7 +132,7 @@ export const WorkspacePanel = ({
         });
 
         if (response.success) {
-          setSessions(selectedWorkspaceId, response.data.sessions);
+          setSessions(selectedWorkspaceId, response.data.sessions as any);
         }
       } catch (error) {
         console.error('Failed to fetch sessions:', error);
@@ -278,9 +285,9 @@ export const WorkspacePanel = ({
 
   // Create wrapper functions that provide context for ChatInput
   const fetchPaths = useCallback(async () => {
-    if (!selectedWorkspaceId) return [];
-    return fetchFileList(selectedWorkspaceId);
-  }, [selectedWorkspaceId, fetchFileList]);
+    // Show logger option when @ is typed
+    return [{ name: '记录笔记', description: 'KNOWLEDGE_LOGGER' }];
+  }, []);
 
   const fetchCommands = useCallback(async () => [
     { name: 'claw', description: '命令/指令 · OPEN_CLAW' },
@@ -366,9 +373,11 @@ export const WorkspacePanel = ({
             fetchPaths={fetchPaths}
             fetchCommands={fetchCommands}
             placeholder={
-              selectedSessionId
-                ? 'Ask anything, @ for context'
-                : 'Ask anything, @ for context with a new session...'
+              inputMode === 'logger'
+                ? 'path + 提问问题，例 /Users/max/Desktop/demo/test4.json 什么是ai'
+                : selectedSessionId
+                  ? 'Ask anything, type @ for file paths, or / for commands...'
+                  : 'Ask anything, @ for context with a new session...'
             }
             modelName={workspace.context.settings?.model}
             isProcessing={isLoading}

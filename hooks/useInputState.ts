@@ -34,7 +34,7 @@ export function useInputState(
   const state: InputState = {
     value: sessionInput.value,
     cursorPosition: sessionInput.cursorPosition,
-    mode: getInputMode(sessionInput.value),
+    mode: getInputMode(sessionInput.value, sessionInput.loggerModeActive),
   };
 
   const setValue = useCallback(
@@ -60,6 +60,15 @@ export function useInputState(
       resetSessionInput(sessionId);
     }
   }, [sessionId, resetSessionInput]);
+
+  const setLoggerModeActive = useCallback(
+    (active: boolean) => {
+      if (sessionId) {
+        setSessionInput(sessionId, { loggerModeActive: active });
+      }
+    },
+    [sessionId, setSessionInput],
+  );
 
   // History helpers
   const historyIndex = sessionInput.historyIndex;
@@ -96,6 +105,7 @@ export function useInputState(
   const planMode = sessionInput.planMode;
   const thinking = sessionInput.thinking;
   const thinkingEnabled = sessionInput.thinkingEnabled;
+  const loggerModeActive = sessionInput.loggerModeActive;
 
   const togglePlanMode = useCallback(() => {
     if (sessionId) {
@@ -168,6 +178,7 @@ export function useInputState(
     setValue,
     setCursorPosition,
     reset,
+    setLoggerModeActive,
     // History
     history,
     historyIndex,
@@ -179,6 +190,7 @@ export function useInputState(
     planMode,
     thinking,
     thinkingEnabled,
+    loggerModeActive,
     togglePlanMode,
     toggleThinking,
     setThinkingEnabled,
