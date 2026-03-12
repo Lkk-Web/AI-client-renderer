@@ -587,7 +587,10 @@ const useStore = create<Store>()((set, get) => ({
                   if (!assistantMessageUuid) {
                     // First chunk: create new message
                     assistantMessageUuid = msg.id || msg._id;
-                    console.log('[CREATE MESSAGE]', assistantMessageUuid, msg.content.substring(0, 50));
+                    const contentPreview = typeof msg.content === 'string' 
+                      ? msg.content.substring(0, 50) 
+                      : JSON.stringify(msg.content).substring(0, 50);
+                    console.log('[CREATE MESSAGE]', assistantMessageUuid, contentPreview);
                     addMessage(sessionId, {
                       uuid: assistantMessageUuid,
                       role: 'assistant',
@@ -596,7 +599,10 @@ const useStore = create<Store>()((set, get) => ({
                     } as any);
                   } else {
                     // Subsequent chunks: update existing message
-                    console.log('[UPDATE MESSAGE]', assistantMessageUuid, msg.content.substring(0, 50));
+                    const contentPreview = typeof msg.content === 'string' 
+                      ? msg.content.substring(0, 50) 
+                      : JSON.stringify(msg.content).substring(0, 50);
+                    console.log('[UPDATE MESSAGE]', assistantMessageUuid, contentPreview);
                     updateMessage(sessionId, assistantMessageUuid, {
                       content: msg.content,
                     });
