@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import Markdown from 'marked-react';
 import { HugeiconsIcon } from '@hugeicons/react';
 import { BrainIcon } from '@hugeicons/core-free-icons';
@@ -58,41 +58,10 @@ export function AssistantMessage({
         {reasoningParts.length > 0 && (
           <div style={{ marginBottom: textParts.length > 0 ? '12px' : '0' }}>
             {reasoningParts.map((part, index) => (
-              <div
+              <CollapsibleThought
                 key={`reasoning-${message.uuid}-${index}`}
-                style={{
-                  marginBottom: '8px',
-                }}
-              >
-                <div
-                  style={{
-                    fontSize: '13px',
-                    fontWeight: 500,
-                    color: 'var(--text-secondary)',
-                    marginBottom: '4px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                  }}
-                >
-                  <HugeiconsIcon
-                    icon={BrainIcon}
-                    size={14}
-                    color="var(--text-secondary)"
-                    strokeWidth={1.5}
-                  />
-                  <span style={{ fontStyle: 'italic' }}>Thought</span>
-                </div>
-                <div
-                  style={{
-                    paddingLeft: '20px',
-                    color: 'var(--text-secondary)',
-                    fontStyle: 'italic',
-                  }}
-                >
-                  <MarkdownContent content={part.text} isThought />
-                </div>
-              </div>
+                text={part.text}
+              />
             ))}
           </div>
         )}
@@ -145,6 +114,67 @@ export function AssistantMessage({
               (Empty message)
             </div>
           )}
+      </div>
+    </div>
+  );
+}
+
+
+// Collapsible Thought block – shows a 200-char preview by default
+const THOUGHT_PREVIEW_LENGTH = 200;
+
+function CollapsibleThought({ text }: { text: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const needsCollapse = text.length > THOUGHT_PREVIEW_LENGTH;
+  const displayText =
+    expanded || !needsCollapse ? text : text.slice(0, THOUGHT_PREVIEW_LENGTH) + '…';
+
+  return (
+    <div style={{ marginBottom: '8px' }}>
+      <div
+        style={{
+          fontSize: '13px',
+          fontWeight: 500,
+          color: 'var(--text-secondary)',
+          marginBottom: '4px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '6px',
+        }}
+      >
+        <HugeiconsIcon
+          icon={BrainIcon}
+          size={14}
+          color="var(--text-secondary)"
+          strokeWidth={1.5}
+        />
+        <span style={{ fontStyle: 'italic' }}>Thought</span>
+      </div>
+      <div
+        style={{
+          paddingLeft: '20px',
+          color: 'var(--text-secondary)',
+          fontStyle: 'italic',
+        }}
+      >
+        <MarkdownContent content={displayText} isThought />
+        {needsCollapse && (
+          <button
+            onClick={() => setExpanded((v) => !v)}
+            style={{
+              marginTop: '4px',
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              fontSize: '12px',
+              color: 'var(--text-secondary)',
+              padding: 0,
+              textDecoration: 'underline',
+            }}
+          >
+            {expanded ? '收起' : '展开全部'}
+          </button>
+        )}
       </div>
     </div>
   );
