@@ -562,50 +562,66 @@ const useStore = create<Store>()((set, get) => ({
       let assistantMessageUuid: string | null = null;
 
       if (reader) {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
+        // Stream read timeout: cancel after 30s to avoid permanent loading
+        const STREAM_TIMEOUT_MS = 30_000;
+        let streamTimedOut = false;
+        const streamTimeoutId = setTimeout(() => {
+          streamTimedOut = true;
+          reader.cancel('Stream read timeout').catch(() => {});
+        }, STREAM_TIMEOUT_MS);
 
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split('\n');
-          buffer = lines.pop() || '';
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
 
-          for (const line of lines) {
-            if (line.trim()) {
-              try {
-                // Parse SSE format: "data: {...}"
-                let jsonStr = line.trim();
-                if (jsonStr.startsWith('data: ')) {
-                  jsonStr = jsonStr.slice(6); // Remove "data: " prefix
-                }
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
 
-                const data = JSON.parse(jsonStr);
-                console.log('[STREAM CHUNK]', data);
-                if (data.messages && data.messages.length > 0) {
-                  const msg = data.messages[0];
-
-                  if (!assistantMessageUuid) {
-                    // First chunk: create new message
-                    assistantMessageUuid = msg.id || msg._id;
-                    console.log('[CREATE MESSAGE]', assistantMessageUuid, msg.content.substring(0, 50));
-                    addMessage(sessionId, {
-                      uuid: assistantMessageUuid,
-                      role: 'assistant',
-                      content: msg.content,
-                      createdAt: new Date(msg.createdAt).getTime(),
-                    } as any);
-                  } else {
-                    // Subsequent chunks: update existing message
-                    console.log('[UPDATE MESSAGE]', assistantMessageUuid, msg.content.substring(0, 50));
-                    updateMessage(sessionId, assistantMessageUuid, {
-                      content: msg.content,
-                    });
+            for (const line of lines) {
+              if (line.trim()) {
+                try {
+                  // Parse SSE format: "data: {...}"
+                  let jsonStr = line.trim();
+                  if (jsonStr.startsWith('data: ')) {
+                    jsonStr = jsonStr.slice(6); // Remove "data: " prefix
                   }
+
+                  const data = JSON.parse(jsonStr);
+                  console.log('[STREAM CHUNK]', data);
+                  if (data.messages && data.messages.length > 0) {
+                    const msg = data.messages[0];
+
+                    if (!assistantMessageUuid) {
+                      // First chunk: create new message
+                      assistantMessageUuid = msg.id || msg._id;
+                      console.log('[CREATE MESSAGE]', assistantMessageUuid, msg.content.substring(0, 50));
+                      addMessage(sessionId, {
+                        uuid: assistantMessageUuid,
+                        role: 'assistant',
+                        content: msg.content,
+                        createdAt: new Date(msg.createdAt).getTime(),
+                      } as any);
+                    } else {
+                      // Subsequent chunks: update existing message
+                      console.log('[UPDATE MESSAGE]', assistantMessageUuid, msg.content.substring(0, 50));
+                      updateMessage(sessionId, assistantMessageUuid, {
+                        content: msg.content,
+                      });
+                    }
+                  }
+                } catch (e) {
+                  // Skip malformed SSE lines without breaking the stream
+                  console.warn('Failed to parse stream line, skipping:', e, line);
                 }
-              } catch (e) {
-                console.error('Failed to parse stream line:', e, line);
               }
             }
+          }
+        } finally {
+          clearTimeout(streamTimeoutId);
+          if (streamTimedOut) {
+            throw new Error('Stream read timed out after 30 seconds');
           }
         }
       }
