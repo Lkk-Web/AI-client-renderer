@@ -163,7 +163,10 @@ function MarkdownContent({
 }) {
   const rendered = useMemo(() => {
     try {
-      return content;
+      // trim whitespace and strip <script> tags to prevent XSS
+      let processed = content.trim();
+      processed = processed.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+      return processed;
     } catch (error) {
       console.error('Failed to parse markdown:', error);
       return content;
