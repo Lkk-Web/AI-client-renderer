@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import Markdown from 'marked-react';
 import { HugeiconsIcon } from '@hugeicons/react';
 import { BrainIcon } from '@hugeicons/core-free-icons';
@@ -58,41 +58,10 @@ export function AssistantMessage({
         {reasoningParts.length > 0 && (
           <div style={{ marginBottom: textParts.length > 0 ? '12px' : '0' }}>
             {reasoningParts.map((part, index) => (
-              <div
+              <CollapsibleThought
                 key={`reasoning-${message.uuid}-${index}`}
-                style={{
-                  marginBottom: '8px',
-                }}
-              >
-                <div
-                  style={{
-                    fontSize: '13px',
-                    fontWeight: 500,
-                    color: 'var(--text-secondary)',
-                    marginBottom: '4px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                  }}
-                >
-                  <HugeiconsIcon
-                    icon={BrainIcon}
-                    size={14}
-                    color="var(--text-secondary)"
-                    strokeWidth={1.5}
-                  />
-                  <span style={{ fontStyle: 'italic' }}>Thought</span>
-                </div>
-                <div
-                  style={{
-                    paddingLeft: '20px',
-                    color: 'var(--text-secondary)',
-                    fontStyle: 'italic',
-                  }}
-                >
-                  <MarkdownContent content={part.text} isThought />
-                </div>
-              </div>
+                text={part.text}
+              />
             ))}
           </div>
         )}
@@ -150,6 +119,65 @@ export function AssistantMessage({
   );
 }
 
+// P0-5: 可折叠的 Thought 块
+const PREVIEW_LENGTH = 200;
+
+function CollapsibleThought({ text }: { text: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const needsCollapse = text.length > PREVIEW_LENGTH;
+  const displayText = expanded || !needsCollapse ? text : text.slice(0, PREVIEW_LENGTH) + '…';
+
+  return (
+    <div style={{ marginBottom: '8px' }}>
+      <div
+        style={{
+          fontSize: '13px',
+          fontWeight: 500,
+          color: 'var(--text-secondary)',
+          marginBottom: '4px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '6px',
+        }}
+      >
+        <HugeiconsIcon
+          icon={BrainIcon}
+          size={14}
+          color="var(--text-secondary)"
+          strokeWidth={1.5}
+        />
+        <span style={{ fontStyle: 'italic' }}>Thought</span>
+      </div>
+      <div
+        style={{
+          paddingLeft: '20px',
+          color: 'var(--text-secondary)',
+          fontStyle: 'italic',
+        }}
+      >
+        <MarkdownContent content={displayText} isThought />
+        {needsCollapse && (
+          <button
+            onClick={() => setExpanded((v) => !v)}
+            style={{
+              marginTop: '4px',
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              fontSize: '12px',
+              color: 'var(--text-secondary)',
+              padding: 0,
+              textDecoration: 'underline',
+            }}
+          >
+            {expanded ? '收起' : '展开'}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /**
  * MarkdownContent component
  * Renders markdown text using marked-react
@@ -161,9 +189,14 @@ function MarkdownContent({
   content: string;
   isThought?: boolean;
 }) {
+  // P0-6: useMemo 中对 content 做实际处理（trim、sanitize）
   const rendered = useMemo(() => {
     try {
-      return content;
+      // trim whitespace
+      let processed = content.trim();
+      // Basic sanitize: strip <script> tags to prevent XSS
+      processed = processed.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+      return processed;
     } catch (error) {
       console.error('Failed to parse markdown:', error);
       return content;

@@ -493,6 +493,14 @@ const useStore = create<Store>()((set, get) => ({
           content: params.message,
           createdAt: Date.now(),
         } as any);
+
+        // P1-9: 首条消息发送后，截取前 20 字作为会话 summary
+        const existingMessages = get().messages[sessionId] || [];
+        // existingMessages 此时已包含刚才 addMessage 的那条，所以长度 === 1 说明是首条
+        if (existingMessages.length === 1 && selectedWorkspaceId) {
+          const summary = params.message.slice(0, 20);
+          updateSession(selectedWorkspaceId, sessionId, { summary });
+        }
       }
 
       // Parse slash command to select app config
@@ -562,50 +570,66 @@ const useStore = create<Store>()((set, get) => ({
       let assistantMessageUuid: string | null = null;
 
       if (reader) {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
+        // P0-3: 30 秒流读取超时保护
+        const STREAM_TIMEOUT_MS = 30_000;
+        let streamTimedOut = false;
+        const streamTimeoutId = setTimeout(() => {
+          streamTimedOut = true;
+          reader.cancel('Stream read timeout').catch(() => {});
+        }, STREAM_TIMEOUT_MS);
 
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split('\n');
-          buffer = lines.pop() || '';
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
 
-          for (const line of lines) {
-            if (line.trim()) {
-              try {
-                // Parse SSE format: "data: {...}"
-                let jsonStr = line.trim();
-                if (jsonStr.startsWith('data: ')) {
-                  jsonStr = jsonStr.slice(6); // Remove "data: " prefix
-                }
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
 
-                const data = JSON.parse(jsonStr);
-                console.log('[STREAM CHUNK]', data);
-                if (data.messages && data.messages.length > 0) {
-                  const msg = data.messages[0];
-
-                  if (!assistantMessageUuid) {
-                    // First chunk: create new message
-                    assistantMessageUuid = msg.id || msg._id;
-                    console.log('[CREATE MESSAGE]', assistantMessageUuid, msg.content.substring(0, 50));
-                    addMessage(sessionId, {
-                      uuid: assistantMessageUuid,
-                      role: 'assistant',
-                      content: msg.content,
-                      createdAt: new Date(msg.createdAt).getTime(),
-                    } as any);
-                  } else {
-                    // Subsequent chunks: update existing message
-                    console.log('[UPDATE MESSAGE]', assistantMessageUuid, msg.content.substring(0, 50));
-                    updateMessage(sessionId, assistantMessageUuid, {
-                      content: msg.content,
-                    });
+            for (const line of lines) {
+              if (line.trim()) {
+                try {
+                  // Parse SSE format: "data: {...}"
+                  let jsonStr = line.trim();
+                  if (jsonStr.startsWith('data: ')) {
+                    jsonStr = jsonStr.slice(6); // Remove "data: " prefix
                   }
+
+                  const data = JSON.parse(jsonStr);
+                  console.log('[STREAM CHUNK]', data);
+                  if (data.messages && data.messages.length > 0) {
+                    const msg = data.messages[0];
+
+                    if (!assistantMessageUuid) {
+                      // First chunk: create new message
+                      assistantMessageUuid = msg.id || msg._id;
+                      console.log('[CREATE MESSAGE]', assistantMessageUuid, msg.content.substring(0, 50));
+                      addMessage(sessionId, {
+                        uuid: assistantMessageUuid,
+                        role: 'assistant',
+                        content: msg.content,
+                        createdAt: new Date(msg.createdAt).getTime(),
+                      } as any);
+                    } else {
+                      // Subsequent chunks: update existing message
+                      console.log('[UPDATE MESSAGE]', assistantMessageUuid, msg.content.substring(0, 50));
+                      updateMessage(sessionId, assistantMessageUuid, {
+                        content: msg.content,
+                      });
+                    }
+                  }
+                } catch (e) {
+                  // P0-3: SSE 单行解析失败时跳过，不中断整个流
+                  console.warn('Failed to parse stream line, skipping:', e, line);
                 }
-              } catch (e) {
-                console.error('Failed to parse stream line:', e, line);
               }
             }
+          }
+        } finally {
+          clearTimeout(streamTimeoutId);
+          if (streamTimedOut) {
+            throw new Error('Stream read timed out after 30 seconds');
           }
         }
       }
@@ -620,13 +644,23 @@ const useStore = create<Store>()((set, get) => ({
       });
     } catch (error) {
       // Set failed state with error message
+      const errMsg = error instanceof Error ? error.message : 'An error occurred';
       setSessionProcessing(sessionId, {
         status: 'failed',
         processingStartTime: null,
         processingToken: 0,
-        error: error instanceof Error ? error.message : 'An error occurred',
+        error: errMsg,
         retryInfo: null,
       });
+
+      // P1-8: 在消息列表末尾追加一条 error 类型消息，提示用户
+      addMessage(sessionId, {
+        uuid: randomUUID(),
+        role: 'assistant',
+        type: 'error',
+        content: `❌ 请求失败：${errMsg}`,
+        createdAt: Date.now(),
+      } as any);
     }
   },
 
