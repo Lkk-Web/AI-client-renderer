@@ -620,13 +620,22 @@ const useStore = create<Store>()((set, get) => ({
       });
     } catch (error) {
       // Set failed state with error message
+      const errMsg = error instanceof Error ? error.message : 'An error occurred';
       setSessionProcessing(sessionId, {
         status: 'failed',
         processingStartTime: null,
         processingToken: 0,
-        error: error instanceof Error ? error.message : 'An error occurred',
+        error: errMsg,
         retryInfo: null,
       });
+      // Append a visible error message into the conversation list
+      addMessage(sessionId, {
+        uuid: randomUUID(),
+        role: 'assistant',
+        type: 'error',
+        content: `❌ 请求失败：${errMsg}`,
+        createdAt: Date.now(),
+      } as any);
     }
   },
 
