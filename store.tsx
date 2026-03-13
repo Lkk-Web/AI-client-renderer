@@ -493,6 +493,13 @@ const useStore = create<Store>()((set, get) => ({
           content: params.message,
           createdAt: Date.now(),
         } as any);
+
+        // Auto-generate session title from the first user message (first 20 chars)
+        const existingMessages = get().messages[sessionId] || [];
+        if (existingMessages.length === 1 && selectedWorkspaceId) {
+          const autoTitle = params.message.trim().slice(0, 20);
+          updateSession(selectedWorkspaceId, sessionId, { summary: autoTitle });
+        }
       }
 
       // Parse slash command to select app config
